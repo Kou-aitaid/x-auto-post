@@ -32,14 +32,14 @@ POST_TYPES = [
 ]
 
 
-def call_gemini(prompt: str, retries: int = 3) -> str:
+def call_gemini(prompt: str, retries: int = 4) -> str:
     key = os.environ["GEMINI_API_KEY"]
     url = GEMINI_URL.format(key=key)
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     for attempt in range(retries):
         resp = requests.post(url, json=payload, timeout=90)
         if resp.status_code == 429:
-            wait = 30 * (attempt + 1)
+            wait = 60 * (attempt + 1)  # 60→120→180→240秒
             print(f"  [WAIT] レート制限 → {wait}秒待機...")
             time.sleep(wait)
             continue
@@ -180,6 +180,11 @@ def main():
         text = call_gemini(prompt).strip()
     except RuntimeError as e:
         print(f"ERROR: {e}")
+        # レート制限でも空ファイルを保存して後続ステップを止めない
+        out_path = DATA_DIR / "posts.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump({"generated_at": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+                       "count": 0, "posts": [], "error": str(e)}, f, ensure_ascii=False, indent=2)
         return
 
     # JSON抽出

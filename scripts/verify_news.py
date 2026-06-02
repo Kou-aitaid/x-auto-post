@@ -25,7 +25,7 @@ GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0
 TRUSTED_SOURCES = ["厚生労働省", "文部科学省", "総務省", "NHK"]
 
 
-def call_gemini(prompt: str, retries: int = 3) -> str:
+def call_gemini(prompt: str, retries: int = 4) -> str:
     """Gemini REST APIを呼び出す（レート制限時は自動リトライ）"""
     key = os.environ["GEMINI_API_KEY"]
     url = GEMINI_URL.format(key=key)
@@ -33,7 +33,7 @@ def call_gemini(prompt: str, retries: int = 3) -> str:
     for attempt in range(retries):
         resp = requests.post(url, json=payload, timeout=60)
         if resp.status_code == 429:
-            wait = 30 * (attempt + 1)
+            wait = 60 * (attempt + 1)  # 60→120→180→240秒
             print(f"  [WAIT] レート制限 → {wait}秒待機...")
             time.sleep(wait)
             continue
@@ -132,7 +132,7 @@ def main():
                 item["verified"] = False
                 item["use_for_post"] = True
             ai_scored.extend(batch)
-        time.sleep(2)  # レート制限回避
+        time.sleep(5)  # バッチ間のレート制限回避
 
     all_verified = auto_scored + ai_scored
 

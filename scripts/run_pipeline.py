@@ -87,7 +87,7 @@ def main(mode: str = "daily"):
             return
 
         # ⑦ Discord Webhook通知（投稿案を独立ブロックで送信）
-        run_step("Webhook通知", "notify_webhook.py")
+        results["notify"] = run_step("Webhook通知", "notify_webhook.py")
 
     elif mode == "weekly":
         results["analyze"] = run_step("アナリスト（週次）", "analyze_performance.py", ["weekly"])
