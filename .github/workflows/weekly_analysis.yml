@@ -40,10 +40,10 @@ jobs:
       - name: HTMLダッシュボードを生成
         run: python scripts/generate_dashboard.py
 
-      - name: ダッシュボードをコミット・プッシュ
+      - name: 分析結果・ダッシュボードをコミット・プッシュ
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add docs/index.html
-          git diff --staged --quiet || git commit -m "週次ダッシュボード更新 $(date +'%Y/%m/%d')"
+          git add docs/index.html data/analytics_insights.json data/tone_guide.json
+          git diff --staged --quiet || git commit -m "週次分析・ダッシュボード更新 $(date +'%Y/%m/%d')"
           git push
