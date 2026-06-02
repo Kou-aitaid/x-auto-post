@@ -91,6 +91,9 @@ def main(mode: str = "daily"):
 
     elif mode == "weekly":
         results["analyze"] = run_step("アナリスト（週次）", "analyze_performance.py", ["weekly"])
+        # 週次レポートをDiscordに送信
+        if results["analyze"]:
+            _notify_weekly_report()
 
     elif mode == "monthly":
         results["analyze"] = run_step("アナリスト（月次）", "analyze_performance.py", ["monthly"])
@@ -102,6 +105,28 @@ def main(mode: str = "daily"):
     summary = f"✅ パイプライン完了 ({ok_count}/{total}ステップ成功, {elapsed}秒)"
     print(f"\n{summary}")
     notify_discord(summary)
+
+
+def _notify_weekly_report():
+    """週次レポートをDiscordに送信"""
+    try:
+        insights_path = DATA_DIR / "analytics_insights.json"
+        if not insights_path.exists():
+            return
+        with open(insights_path, encoding="utf-8") as f:
+            insights = json.load(f)
+        report  = insights.get("latest_report", "")
+        actions = insights.get("action_items", [])
+        if not report:
+            return
+        action_text = "\n".join(f"▶ {a}" for a in actions) if actions else ""
+        msg = f"📊 **週次レポート**\n\n{report}"
+        if action_text:
+            msg += f"\n\n**今週やること**\n{action_text}"
+        msg += "\n\n🔗 ダッシュボード → GitHubのPages URLで確認できます"
+        notify_discord(msg)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

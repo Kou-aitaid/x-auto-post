@@ -1,4 +1,4 @@
-name: 週次分析
+name: 週次分析・ダッシュボード更新
 
 on:
   schedule:
@@ -6,11 +6,16 @@ on:
     - cron: "0 12 * * 0"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   weekly:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Python セットアップ
         uses: actions/setup-python@v5
@@ -23,33 +28,22 @@ jobs:
       - name: 依存パッケージをインストール
         run: pip install -r requirements.txt
 
-      - name: 週次分析を実行
+      - name: 自アカウント統計を自動取得（Nitter）
+        run: python scripts/fetch_own_stats.py
+
+      - name: 週次パフォーマンス分析
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
         run: python scripts/run_pipeline.py weekly
 
----
-name: 月次分析
+      - name: HTMLダッシュボードを生成
+        run: python scripts/generate_dashboard.py
 
-on:
-  schedule:
-    # 毎月1日21:00 JST = 12:00 UTC
-    - cron: "0 12 1 * *"
-  workflow_dispatch:
-
-jobs:
-  monthly:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-          cache: "pip"
-      - run: pip install -r requirements.txt
-      - name: 月次分析を実行
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python scripts/run_pipeline.py monthly
+      - name: ダッシュボードをコミット・プッシュ
+        run: |
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git add docs/index.html
+          git diff --staged --quiet || git commit -m "週次ダッシュボード更新 $(date +'%Y/%m/%d')"
+          git push
