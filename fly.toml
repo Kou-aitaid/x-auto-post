@@ -1,0 +1,17 @@
+# fly.toml - Discord Bot 常駐デプロイ設定
+# アプリ名はグローバルで一意である必要があります
+# 変更する場合: app = '任意の名前' に書き換えてください
+app = 'kansai-job-bot'
+primary_region = 'nrt'
+
+[build]
+
+[env]
+  PYTHONUNBUFFERED = "1"
+
+# Discord Botはポート不要（Workerプロセス）
+# 環境変数は: flyctl secrets set DISCORD_BOT_TOKEN=xxx で設定
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '256mb'
