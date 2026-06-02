@@ -35,18 +35,15 @@ def run_step(name: str, script: str, args: list = None) -> bool:
 
 
 def notify_discord(message: str):
-    """Discordにシステムメッセージを送信"""
+    """DiscordにWebhookでシステムメッセージを送信"""
     try:
         import requests
         from dotenv import load_dotenv
         load_dotenv()
-        token = os.environ.get("DISCORD_BOT_TOKEN")
-        channel_id = os.environ.get("DISCORD_CHANNEL_ID")
-        if not token or not channel_id:
+        webhook_url = os.environ.get("DISCORD_WEBHOOK_URL")
+        if not webhook_url:
             return
-        url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
-        headers = {"Authorization": f"Bot {token}", "Content-Type": "application/json"}
-        requests.post(url, json={"content": message}, headers=headers, timeout=10)
+        requests.post(webhook_url, json={"content": message}, timeout=10)
     except Exception:
         pass
 
@@ -89,9 +86,8 @@ def main(mode: str = "daily"):
             notify_discord("❌ 品質チェックに失敗しました。")
             return
 
-        # ⑦ Discord通知（Botが別プロセスで常駐しているため、ファイルを置くだけ）
-        # Fly.io上のBotが reviewed_posts.json を検知して自動通知する
-        notify_discord("✅ 投稿案が準備できました。Discordで承認作業をお願いします！")
+        # ⑦ Discord Webhook通知（投稿案を独立ブロックで送信）
+        run_step("Webhook通知", "notify_webhook.py")
 
     elif mode == "weekly":
         results["analyze"] = run_step("アナリスト（週次）", "analyze_performance.py", ["weekly"])
