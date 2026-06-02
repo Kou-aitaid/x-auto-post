@@ -1,4 +1,4 @@
-name: 週次分析・ダッシュボード更新
+name: 週次フォロワー取得・ダッシュボード更新
 
 on:
   schedule:
@@ -31,19 +31,16 @@ jobs:
       - name: 自アカウント統計を自動取得（Nitter）
         run: python scripts/fetch_own_stats.py
 
-      - name: 週次パフォーマンス分析
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python scripts/run_pipeline.py weekly
+      - name: Nitterでフォロワー数・いいね数を取得
+        run: python scripts/fetch_own_stats.py
 
       - name: HTMLダッシュボードを生成
         run: python scripts/generate_dashboard.py
 
-      - name: 分析結果・ダッシュボードをコミット・プッシュ
+      - name: ダッシュボードをコミット・プッシュ
         run: |
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git config user.name "github-actions[bot]"
-          git add docs/index.html data/analytics_insights.json data/tone_guide.json
-          git diff --staged --quiet || git commit -m "週次分析・ダッシュボード更新 $(date +'%Y/%m/%d')"
+          git add docs/index.html
+          git diff --staged --quiet || git commit -m "週次ダッシュボード更新 $(date +'%Y/%m/%d')"
           git push
