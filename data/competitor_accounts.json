@@ -1,0 +1,36 @@
+{
+  "comment": "分析対象の競合Xアカウント。!add_sampleコマンドで投稿サンプルを手動追加もできる。",
+  "accounts": [
+    {
+      "username": "kansai_intern",
+      "description": "関西特化のインターン・就活情報アカウント。最も近い直接競合",
+      "active": true,
+      "priority": "high"
+    },
+    {
+      "username": "f_shukatsu25",
+      "description": "Fラン→大手内定の経験をもとにインターン優遇情報を発信。ターゲット層が近い",
+      "active": true,
+      "priority": "high"
+    },
+    {
+      "username": "InternGuide",
+      "description": "インターンシップガイド公式。15万人利用の大手メディア。発信フォーマットの参考に",
+      "active": true,
+      "priority": "high"
+    },
+    {
+      "username": "Syukatsu_Muso",
+      "description": "就活無双塾。元JPMorgan採用担当。ES添削で人気。バズり方の参考に",
+      "active": true,
+      "priority": "medium"
+    },
+    {
+      "username": "shukatsu_media",
+      "description": "就活の教科書編集長。自己分析・GD・ガクチカなど就活ノウハウ全般",
+      "active": true,
+      "priority": "medium"
+    }
+  ],
+  "note": "Nitter RSSで自動取得 + data/competitor_seeds.jsonの手動サンプルを合わせて分析します"
+}

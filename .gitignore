@@ -1,0 +1,30 @@
+# 環境変数（絶対にコミットしない）
+.env
+
+# データファイル（個人情報・投稿内容を含む）
+data/news.json
+data/competitor_analysis.json
+data/tone_guide.json
+data/verified_news.json
+data/posts.json
+data/reviewed_posts.json
+data/approved_posts.json
+data/publish_log.json
+data/performance_log.json
+data/analytics_insights.json
+data/archive/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
