@@ -1,6 +1,170 @@
 <!DOCTYPE html>
-<html lang="ja"><head><meta charset="UTF-8"><title>ダッシュボード準備中</title>
-<style>body{background:#0f1117;color:#94a3b8;font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}
-.box{text-align:center}.title{color:#7dd3fc;font-size:1.4rem;margin-bottom:12px}.sub{font-size:.9rem}</style>
-</head><body><div class="box"><div class="title">📊 @kansai_job_ ダッシュボード</div>
-<div class="sub">毎週日曜日に自動更新されます。<br>初回レポートは来週日曜日に生成されます。</div></div></body></html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>@kansai_job_ ダッシュボード</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Hiragino Sans',sans-serif;background:#0f1117;color:#e2e8f0;min-height:100vh;padding:24px}
+  h1{font-size:1.4rem;color:#7dd3fc;margin-bottom:4px}
+  .sub{font-size:.8rem;color:#64748b;margin-bottom:24px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px}
+  .card{background:#1e2330;border-radius:12px;padding:20px;border:1px solid #2d3748}
+  .card .label{font-size:.75rem;color:#64748b;margin-bottom:6px}
+  .card .value{font-size:1.8rem;font-weight:700;color:#f1f5f9}
+  .card .diff{font-size:.85rem;color:#34d399;margin-top:4px}
+  .section{background:#1e2330;border-radius:12px;padding:20px;margin-bottom:20px;border:1px solid #2d3748}
+  .section h2{font-size:1rem;color:#94a3b8;margin-bottom:16px;border-bottom:1px solid #2d3748;padding-bottom:8px}
+  .chart-wrap{position:relative;height:220px}
+  table{width:100%;border-collapse:collapse;font-size:.85rem}
+  th{text-align:left;color:#64748b;font-weight:500;padding:8px 12px;border-bottom:1px solid #2d3748}
+  td{padding:8px 12px;border-bottom:1px solid #1a202c}
+  td.num{text-align:right;font-variant-numeric:tabular-nums}
+  td.content{color:#cbd5e1;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .badge{background:#1e3a5f;color:#7dd3fc;border-radius:4px;padding:2px 6px;font-size:.75rem}
+  .report{background:#162032;border-left:3px solid #3b82f6;padding:12px 16px;border-radius:0 8px 8px 0;font-size:.9rem;line-height:1.7;color:#cbd5e1;margin-bottom:16px}
+  ul.actions{list-style:none;display:flex;flex-direction:column;gap:8px}
+  ul.actions li::before{content:"▶ ";color:#3b82f6}
+  ul.actions li{font-size:.9rem;color:#cbd5e1}
+  .footer{text-align:center;font-size:.75rem;color:#374151;margin-top:32px}
+</style>
+</head>
+<body>
+<h1>📊 @kansai_job_ パフォーマンスダッシュボード</h1>
+<p class="sub">最終更新: 2026/06/02 06:42 UTC（週次自動更新）</p>
+
+<!-- KPIカード -->
+<div class="grid">
+  <div class="card">
+    <div class="label">フォロワー数</div>
+    <div class="value">—</div>
+    <div class="diff">今週の増減 —</div>
+  </div>
+  <div class="card">
+    <div class="label">総投稿数</div>
+    <div class="value">6</div>
+  </div>
+  <div class="card">
+    <div class="label">総いいね数</div>
+    <div class="value">8</div>
+  </div>
+  <div class="card">
+    <div class="label">総RT数</div>
+    <div class="value">0</div>
+  </div>
+</div>
+
+<!-- 投稿タイプ別グラフ -->
+<div class="section">
+  <h2>投稿タイプ別 いいね・RT数</h2>
+  <div class="chart-wrap">
+    <canvas id="typeChart"></canvas>
+  </div>
+</div>
+
+<!-- 週別投稿数 -->
+<div class="section">
+  <h2>週別投稿数</h2>
+  <div class="chart-wrap">
+    <canvas id="weekChart"></canvas>
+  </div>
+</div>
+
+<!-- 直近投稿 -->
+<div class="section">
+  <h2>直近の投稿パフォーマンス（Nitter自動取得）</h2>
+  <table>
+    <thead>
+      <tr><th>日付</th><th>タイプ</th><th>投稿内容</th><th>いいね</th><th>RT</th><th>返信</th></tr>
+    </thead>
+    <tbody>
+        <tr>
+          <td>Tue, May 2</td>
+          <td><span class="badge">imported</span></td>
+          <td class="content">【28卒向け 関西穴場企業紹介 vol.18】 健康診断で血液検査を受けたことが...</td>
+          <td class="num">2</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+        </tr>
+        <tr>
+          <td>Tue, May 2</td>
+          <td><span class="badge">imported</span></td>
+          <td class="content">ガクチカが居酒屋バイトしかない関西28卒へ。 そのままだと、書類で落ちる。 人事...</td>
+          <td class="num">2</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+        </tr>
+        <tr>
+          <td>Tue, May 2</td>
+          <td><span class="badge">imported</span></td>
+          <td class="content">28卒のみなさんからよく聞く2つの悩み ①業界選びがわからない ②周りがどこまで...</td>
+          <td class="num">2</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+        </tr>
+        <tr>
+          <td>Tue, May 2</td>
+          <td><span class="badge">imported</span></td>
+          <td class="content">意外と知られてない数字。 大阪府本社の上場企業は437社。 京都・兵庫も合わせる...</td>
+          <td class="num">2</td>
+          <td class="num">0</td>
+          <td class="num">0</td>
+        </tr></tbody>
+  </table>
+</div>
+
+<!-- AI分析レポート -->
+<div class="section">
+  <h2>AI 週次レポート</h2>
+  <div class="report">データ蓄積中...</div>
+  <h2 style="margin-top:16px">今週やること</h2>
+  <ul class="actions"><li>データ蓄積中...</li></ul>
+</div>
+
+<p class="footer">GitHub Actions × Gemini API × Nitter で完全自動生成</p>
+
+<script>
+const typeLabels = ["ニュース速報型", "imported"];
+const typeLikes  = [0, 8];
+const typeRTs    = [0, 0];
+
+new Chart(document.getElementById('typeChart'), {
+  type: 'bar',
+  data: {
+    labels: typeLabels,
+    datasets: [
+      {label:'いいね', data:typeLikes, backgroundColor:'rgba(251,191,36,.8)'},
+      {label:'RT',     data:typeRTs,   backgroundColor:'rgba(59,130,246,.8)'}
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{labels:{color:'#94a3b8'}}},
+    scales:{x:{ticks:{color:'#64748b'},grid:{color:'#2d3748'}},
+             y:{ticks:{color:'#64748b'},grid:{color:'#2d3748'}}}
+  }
+});
+
+new Chart(document.getElementById('weekChart'), {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [{
+      label:'投稿数',
+      data: [],
+      borderColor:'#7dd3fc', backgroundColor:'rgba(125,211,252,.15)',
+      tension:0.3, fill:true
+    }]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    plugins:{legend:{labels:{color:'#94a3b8'}}},
+    scales:{x:{ticks:{color:'#64748b'},grid:{color:'#2d3748'}},
+             y:{ticks:{color:'#64748b',stepSize:1},grid:{color:'#2d3748'}}}
+  }
+});
+</script>
+</body>
+</html>
