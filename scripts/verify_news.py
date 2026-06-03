@@ -1,7 +1,8 @@
 """
 ファクトチェックスクリプト
-Gemini API の Google Search Grounding を使い、リアルタイムでGoogle検索して
-各ニュースの信頼度を確認する。タイトル・出典名だけでの判定はしない。
+① 信頼できる出典は即確定（API不要）
+② それ以外はURLにアクセスして本文を取得 → Geminiでバッチ判定
+   → リアルタイム確認しつつ処理を高速に保つ
 """
 
 from __future__ import annotations
@@ -13,8 +14,14 @@ import time
 import requests
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 from dotenv import load_dotenv
+
+try:
+    from bs4 import BeautifulSoup
+    BS4_AVAILABLE = True
+except ImportError:
+    BS4_AVAILABLE = False
 
 load_dotenv()
 
@@ -26,26 +33,27 @@ GEMINI_URL = (
 )
 
 # 即A確定（一次情報源）
-TRUSTED_A_SOURCES = [
+TRUSTED_A = [
     "厚生労働省", "文部科学省", "総務省", "経済産業省", "内閣府",
     "NHK", "日本経済新聞",
 ]
 
-# 即B確定（信頼できるメディア・Google検索不要）
-TRUSTED_B_SOURCES = [
+# 即B確定（信頼できるメディア・URL確認不要）
+TRUSTED_B = [
     "マイナビ", "リクナビ", "リクルート", "ダイヤモンド", "東洋経済",
     "朝日新聞", "毎日新聞", "読売新聞", "産経新聞", "共同通信",
     "doda", "エン転職", "キャリタス", "就職四季報", "日経HR",
+    "プレスリリース", "PR TIMES", "Business Wire",
 ]
 
-# Groundingで確認する最大件数（時間制限のため）
-MAX_GROUNDING = 10
-SEARCH_INTERVAL = 2  # 秒
+BATCH_SIZE     = 10   # Geminiに一度に送る件数
+BATCH_INTERVAL = 5    # バッチ間の待機秒数
+URL_TIMEOUT    = 8    # URL取得のタイムアウト秒数
 
 
-# ─────────────────────────────────────────────
-# Gemini 呼び出し（通常）
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────
+# Gemini 呼び出し
+# ─────────────────────────────────────────
 
 def call_gemini(prompt: str, retries: int = 4) -> str:
     key = os.environ["GEMINI_API_KEY"]
@@ -62,143 +70,99 @@ def call_gemini(prompt: str, retries: int = 4) -> str:
     raise RuntimeError("Gemini APIのレート制限が続いています。")
 
 
-# ─────────────────────────────────────────────
-# Gemini 呼び出し（Google Search Grounding）
-# ─────────────────────────────────────────────
-
-def call_gemini_with_search(prompt: str, retries: int = 4) -> Tuple[str, List[str]]:
-    """Google Search Groundingを有効にしてリアルタイム検索付きで呼び出す"""
-    key = os.environ["GEMINI_API_KEY"]
-    payload = {
-        "contents": [{"parts": [{"text": prompt}]}],
-        "tools": [{"google_search": {}}],
-    }
-    for attempt in range(retries):
-        resp = requests.post(GEMINI_URL.format(key=key), json=payload, timeout=90)
-        if resp.status_code == 429:
-            wait = 60 * (attempt + 1)
-            print(f"  [WAIT] レート制限 → {wait}秒待機...")
-            time.sleep(wait)
-            continue
-        resp.raise_for_status()
-        data = resp.json()
-        text = data["candidates"][0]["content"]["parts"][0]["text"]
-
-        # 検索で参照したURLを記録
-        grounding = data["candidates"][0].get("groundingMetadata", {})
-        sources = [
-            chunk.get("web", {}).get("uri", "")
-            for chunk in grounding.get("groundingChunks", [])
-            if chunk.get("web", {}).get("uri")
-        ]
-        return text, sources
-
-    raise RuntimeError("Gemini APIのレート制限が続いています。")
-
-
-# ─────────────────────────────────────────────
-# 即判定（Google検索不要）
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────
+# 即判定
+# ─────────────────────────────────────────
 
 def quick_score(item: Dict) -> Optional[str]:
-    """信頼できる出典は検索不要で即確定"""
     source = item.get("source", "")
-    if any(s in source for s in TRUSTED_A_SOURCES):
+    if any(s in source for s in TRUSTED_A) or item.get("trust_base") == "A":
         return "A"
-    if item.get("trust_base") == "A":
-        return "A"
-    if any(s in source for s in TRUSTED_B_SOURCES):
+    if any(s in source for s in TRUSTED_B):
         return "B"
-    return None  # 判断できないものだけGroundingへ
+    return None
 
 
-# ─────────────────────────────────────────────
-# リアルタイムファクトチェック（1件ずつ）
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────
+# URLアクセスして本文を取得
+# ─────────────────────────────────────────
 
-def verify_single(item: Dict) -> Dict:
-    """Google Search Groundingで1件ずつリアルタイム確認"""
-    title  = item.get("title", "")[:150]
-    source = item.get("source", "")
-    url    = item.get("url", "")
-    summary = item.get("summary", "")[:100]
-
-    prompt = f"""以下の就活ニュースについて、今すぐGoogle検索で事実確認をしてからスコアを付けてください。
-記憶や学習データではなく、必ずリアルタイムの検索結果を使って判断してください。
-
-【確認するニュース】
-タイトル: {title}
-出典: {source}
-URL: {url}
-概要: {summary}
-
-【確認してほしいこと】
-1. このニュースは実際に報道・公表されているか
-2. 情報は現在も有効か（古くなっていないか）
-3. 出典は信頼できるか
-
-【スコア基準】
-A: 一次情報源（省庁・企業公式・NHK）または複数の信頼できるメディアで確認できた
-B: 信頼できるメディアで報道されているが、確認は1件のみ
-C: 情報が古い・内容に誤りがある・確認できない・信頼性が低い
-
-以下のJSON形式のみで返してください（コードブロックなし・余計な文章なし）：
-{{"score": "A", "reason": "理由を20字以内", "confirmed": true}}"""
-
+def fetch_article_text(url: str) -> str:
+    """記事URLにアクセスして本文テキストを取得（失敗したら空文字）"""
+    if not url or not url.startswith("http"):
+        return ""
     try:
-        text, search_sources = call_gemini_with_search(prompt)
+        resp = requests.get(
+            url,
+            timeout=URL_TIMEOUT,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; factcheck-bot)"},
+            allow_redirects=True,
+        )
+        if resp.status_code != 200:
+            return ""
 
-        # JSONを抽出（Groundingレスポンスには説明文が混入することがある）
-        text = text.strip()
-        match = re.search(r'\{[^{}]*"score"[^{}]*\}', text, re.DOTALL)
-        if match:
-            result = json.loads(match.group(0))
+        if BS4_AVAILABLE:
+            soup = BeautifulSoup(resp.text, "html.parser")
+            # script/style を除去
+            for tag in soup(["script", "style", "nav", "footer"]):
+                tag.decompose()
+            text = " ".join(p.get_text(strip=True) for p in soup.find_all("p"))
         else:
-            result = json.loads(text)
+            # BeautifulSoupがない場合はHTMLタグを正規表現で除去
+            text = re.sub(r"<[^>]+>", " ", resp.text)
 
-        result["search_sources"] = search_sources[:3]
-        result["grounding_used"] = True
-        return result
+        # 改行・余白を整理して先頭300文字を返す
+        text = re.sub(r"\s+", " ", text).strip()
+        return text[:300]
 
-    except Exception as e:
-        print(f"    [WARN] Grounding失敗 → 通常判定にフォールバック: {e}")
-        return _fallback_verify(item)
+    except Exception:
+        return ""
 
 
-def _fallback_verify(item: Dict) -> Dict:
-    """Grounding失敗時の通常判定（フォールバック）"""
-    prompt = f"""以下の就活ニュースの信頼度スコアを付けてください。
+# ─────────────────────────────────────────
+# URLテキスト付きでGeminiにバッチ判定
+# ─────────────────────────────────────────
 
-タイトル: {item.get('title', '')[:100]}
-出典: {item.get('source', '')}
+def batch_verify_with_content(items: List[Dict]) -> List[Dict]:
+    """URL本文込みでGeminiにバッチ判定させる"""
+    items_text = "\n".join([
+        f"[{i}] タイトル: {item['title'][:100]}\n"
+        f"    出典: {item['source']}\n"
+        f"    本文抜粋: {item.get('_article_text', '取得不可')[:150]}"
+        for i, item in enumerate(items)
+    ])
+
+    prompt = f"""以下の就活ニュース記事を確認し、信頼度スコアを付けてください。
+本文抜粋が取得できている場合は、タイトルと本文の内容が一致しているかも確認してください。
 
 スコア基準：
-A: 厚労省・文科省・企業公式・NHKなど一次情報源
-B: マイナビ・リクナビ・日経など信頼できるメディア
-C: 信頼性不明・古い情報
+A: 一次情報源（省庁・企業公式・NHK）または内容が確認できた信頼性の高い記事
+B: 信頼できるメディアの記事、または内容が妥当と判断できる記事
+C: 本文が取得できず内容不明 / タイトルと本文が乖離 / 古い情報 / 信頼性不明
 
-JSONのみ返してください：{{"score": "B", "reason": "理由を15字以内", "confirmed": false}}"""
+ニュース一覧：
+{items_text}
 
-    try:
-        text = call_gemini(prompt).strip()
-        match = re.search(r'\{[^{}]*"score"[^{}]*\}', text, re.DOTALL)
-        result = json.loads(match.group(0) if match else text)
-        result["grounding_used"] = False
-        return result
-    except Exception:
-        return {"score": "B", "reason": "判定失敗", "confirmed": False, "grounding_used": False}
+JSON形式のみで返してください（コードブロックなし）：
+[{{"index": 0, "score": "A", "reason": "理由15字以内"}}, ...]"""
+
+    text = call_gemini(prompt).strip()
+    if "```" in text:
+        match = re.search(r"\[.*\]", text, re.DOTALL)
+        text = match.group(0) if match else text
+    return json.loads(text)
 
 
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────
 # main
-# ─────────────────────────────────────────────
+# ─────────────────────────────────────────
 
 def main():
-    print("=== ファクトチェック開始（Google Search Grounding）===")
+    print("=== ファクトチェック開始（URL取得 + Gemini判定）===")
 
     news_path = DATA_DIR / "news.json"
     if not news_path.exists():
-        print("ERROR: data/news.json が見つかりません。先に fetch_news.py を実行してください。")
+        print("ERROR: data/news.json が見つかりません。")
         return
 
     with open(news_path, encoding="utf-8") as f:
@@ -207,78 +171,91 @@ def main():
     items = news_data.get("items", [])
     print(f"対象: {len(items)}件")
 
-    auto_scored = []
-    needs_search = []
+    # ① 即判定
+    auto_scored  = []
+    needs_verify = []
 
     for item in items:
         score = quick_score(item)
         if score:
-            item["trust_score"] = score
-            item["trust_reason"] = "一次情報源"
-            item["verified"] = True
-            item["grounding_used"] = False
-            item["use_for_post"] = True
+            item.update({
+                "trust_score": score,
+                "trust_reason": "出典で即確定",
+                "verified": True,
+                "url_checked": False,
+                "use_for_post": True,
+            })
             auto_scored.append(item)
         else:
-            needs_search.append(item)
+            needs_verify.append(item)
 
-    print(f"  即確定（A）: {sum(1 for x in auto_scored if x['trust_score']=='A')}件 / "
-          f"即確定（B）: {sum(1 for x in auto_scored if x['trust_score']=='B')}件")
-    print(f"  Google検索で確認（上限{MAX_GROUNDING}件）: {len(needs_search)}件")
+    a_count = sum(1 for x in auto_scored if x["trust_score"] == "A")
+    b_count = sum(1 for x in auto_scored if x["trust_score"] == "B")
+    print(f"  即確定 A:{a_count}件 / B:{b_count}件 / URL確認が必要:{len(needs_verify)}件")
 
-    # Groundingで確認するのは上限まで。超えた分はBで処理
-    grounding_targets = needs_search[:MAX_GROUNDING]
-    fallback_targets  = needs_search[MAX_GROUNDING:]
+    # ② URLアクセスして本文を取得
+    if needs_verify:
+        print(f"  URLから本文を取得中...")
+        for item in needs_verify:
+            text = fetch_article_text(item.get("url", ""))
+            item["_article_text"] = text
+            if text:
+                print(f"    [OK] {item['title'][:30]}...")
+            else:
+                print(f"    [NG] {item['title'][:30]}... （取得失敗）")
 
-    search_scored = []
-    for i, item in enumerate(grounding_targets):
-        short_title = item.get("title", "")[:35]
-        print(f"  [{i+1}/{len(grounding_targets)}] 検索確認: {short_title}...")
+    # ③ Geminiでバッチ判定
+    ai_scored = []
+    for i in range(0, len(needs_verify), BATCH_SIZE):
+        batch = needs_verify[i:i + BATCH_SIZE]
+        print(f"  Gemini判定中... ({i+1}〜{min(i+BATCH_SIZE, len(needs_verify))}件目)")
+        try:
+            results = batch_verify_with_content(batch)
+            for r in results:
+                idx = r["index"]
+                if idx < len(batch):
+                    batch[idx].update({
+                        "trust_score":  r["score"],
+                        "trust_reason": r.get("reason", ""),
+                        "verified":     True,
+                        "url_checked":  bool(batch[idx].get("_article_text")),
+                        "use_for_post": r["score"] != "C",
+                    })
+            ai_scored.extend(batch)
+        except Exception as e:
+            print(f"  [ERROR] 判定失敗: {e} → スコアBで処理")
+            for item in batch:
+                item.update({
+                    "trust_score": "B", "trust_reason": "判定失敗",
+                    "verified": False, "url_checked": False, "use_for_post": True,
+                })
+            ai_scored.extend(batch)
 
-        result = verify_single(item)
-        item["trust_score"]    = result.get("score", "B")
-        item["trust_reason"]   = result.get("reason", "")
-        item["verified"]       = result.get("confirmed", False)
-        item["grounding_used"] = result.get("grounding_used", False)
-        item["search_sources"] = result.get("search_sources", [])
-        item["use_for_post"]   = item["trust_score"] != "C"
-        search_scored.append(item)
+        if i + BATCH_SIZE < len(needs_verify):
+            time.sleep(BATCH_INTERVAL)
 
-        if i < len(grounding_targets) - 1:
-            time.sleep(SEARCH_INTERVAL)
+    # _article_text（内部用）を除去
+    for item in ai_scored:
+        item.pop("_article_text", None)
 
-    # 上限超えはBで自動処理
-    for item in fallback_targets:
-        item["trust_score"]    = "B"
-        item["trust_reason"]   = "件数上限により自動B"
-        item["verified"]       = False
-        item["grounding_used"] = False
-        item["use_for_post"]   = True
-        search_scored.append(item)
+    all_verified = auto_scored + ai_scored
 
-    if fallback_targets:
-        print(f"  上限超え → 自動B処理: {len(fallback_targets)}件")
-
-    all_verified = auto_scored + search_scored
-
-    # A → B → C の順にソート、Cは除外
+    # A→B→C でソート、Cは除外
     usable = [x for x in all_verified if x.get("use_for_post")]
     usable.sort(key=lambda x: (
         {"A": 0, "B": 1, "C": 2}.get(x.get("trust_score"), 2),
         not x.get("is_kansai", False)
     ))
 
-    grounding_count = sum(1 for x in search_scored if x.get("grounding_used"))
-
     output = {
-        "verified_at":    datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
-        "total_checked":  len(all_verified),
-        "usable_count":   len(usable),
-        "score_a":        sum(1 for x in all_verified if x.get("trust_score") == "A"),
-        "score_b":        sum(1 for x in all_verified if x.get("trust_score") == "B"),
-        "score_c":        sum(1 for x in all_verified if x.get("trust_score") == "C"),
-        "grounding_used": grounding_count,
-        "items":          usable,
+        "verified_at":  datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "total_checked": len(all_verified),
+        "usable_count":  len(usable),
+        "score_a":  sum(1 for x in all_verified if x.get("trust_score") == "A"),
+        "score_b":  sum(1 for x in all_verified if x.get("trust_score") == "B"),
+        "score_c":  sum(1 for x in all_verified if x.get("trust_score") == "C"),
+        "url_checked": sum(1 for x in ai_scored if x.get("url_checked")),
+        "items": usable,
     }
 
     out_path = DATA_DIR / "verified_news.json"
@@ -286,8 +263,7 @@ def main():
         json.dump(output, f, ensure_ascii=False, indent=2)
 
     print(f"\n=== 完了 ===")
-    print(f"スコアA: {output['score_a']}件 / B: {output['score_b']}件 / C: {output['score_c']}件")
-    print(f"Google検索で確認: {grounding_count}件 / 即確定: {len(auto_scored)}件")
+    print(f"A:{output['score_a']} / B:{output['score_b']} / C:{output['score_c']} / URL確認:{output['url_checked']}件")
     print(f"投稿に使える件数: {output['usable_count']}件")
 
 
