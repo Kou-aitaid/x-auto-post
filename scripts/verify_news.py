@@ -25,14 +25,22 @@ GEMINI_URL = (
     "models/gemini-2.0-flash:generateContent?key={key}"
 )
 
-# これらは出典名だけで即A確定（Google検索不要）
-TRUSTED_SOURCES = [
+# 即A確定（一次情報源）
+TRUSTED_A_SOURCES = [
     "厚生労働省", "文部科学省", "総務省", "経済産業省", "内閣府",
     "NHK", "日本経済新聞",
 ]
 
-# バッチあたりの処理件数（Groundingは1件ずつ確認）
-SEARCH_INTERVAL = 4  # 秒（レート制限回避）
+# 即B確定（信頼できるメディア・Google検索不要）
+TRUSTED_B_SOURCES = [
+    "マイナビ", "リクナビ", "リクルート", "ダイヤモンド", "東洋経済",
+    "朝日新聞", "毎日新聞", "読売新聞", "産経新聞", "共同通信",
+    "doda", "エン転職", "キャリタス", "就職四季報", "日経HR",
+]
+
+# Groundingで確認する最大件数（時間制限のため）
+MAX_GROUNDING = 10
+SEARCH_INTERVAL = 2  # 秒
 
 
 # ─────────────────────────────────────────────
@@ -93,13 +101,15 @@ def call_gemini_with_search(prompt: str, retries: int = 4) -> Tuple[str, List[st
 # ─────────────────────────────────────────────
 
 def quick_score(item: Dict) -> Optional[str]:
-    """一次情報源は検索不要で即A確定"""
+    """信頼できる出典は検索不要で即確定"""
     source = item.get("source", "")
-    if any(s in source for s in TRUSTED_SOURCES):
+    if any(s in source for s in TRUSTED_A_SOURCES):
         return "A"
     if item.get("trust_base") == "A":
         return "A"
-    return None
+    if any(s in source for s in TRUSTED_B_SOURCES):
+        return "B"
+    return None  # 判断できないものだけGroundingへ
 
 
 # ─────────────────────────────────────────────
@@ -212,16 +222,20 @@ def main():
         else:
             needs_search.append(item)
 
-    print(f"  即確定（一次情報源）: {len(auto_scored)}件")
-    print(f"  Google検索で確認: {len(needs_search)}件")
+    print(f"  即確定（A）: {sum(1 for x in auto_scored if x['trust_score']=='A')}件 / "
+          f"即確定（B）: {sum(1 for x in auto_scored if x['trust_score']=='B')}件")
+    print(f"  Google検索で確認（上限{MAX_GROUNDING}件）: {len(needs_search)}件")
+
+    # Groundingで確認するのは上限まで。超えた分はBで処理
+    grounding_targets = needs_search[:MAX_GROUNDING]
+    fallback_targets  = needs_search[MAX_GROUNDING:]
 
     search_scored = []
-    for i, item in enumerate(needs_search):
+    for i, item in enumerate(grounding_targets):
         short_title = item.get("title", "")[:35]
-        print(f"  [{i+1}/{len(needs_search)}] 検索中: {short_title}...")
+        print(f"  [{i+1}/{len(grounding_targets)}] 検索確認: {short_title}...")
 
         result = verify_single(item)
-
         item["trust_score"]    = result.get("score", "B")
         item["trust_reason"]   = result.get("reason", "")
         item["verified"]       = result.get("confirmed", False)
@@ -230,9 +244,20 @@ def main():
         item["use_for_post"]   = item["trust_score"] != "C"
         search_scored.append(item)
 
-        # レート制限回避（最後の1件は不要）
-        if i < len(needs_search) - 1:
+        if i < len(grounding_targets) - 1:
             time.sleep(SEARCH_INTERVAL)
+
+    # 上限超えはBで自動処理
+    for item in fallback_targets:
+        item["trust_score"]    = "B"
+        item["trust_reason"]   = "件数上限により自動B"
+        item["verified"]       = False
+        item["grounding_used"] = False
+        item["use_for_post"]   = True
+        search_scored.append(item)
+
+    if fallback_targets:
+        print(f"  上限超え → 自動B処理: {len(fallback_targets)}件")
 
     all_verified = auto_scored + search_scored
 
