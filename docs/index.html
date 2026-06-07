@@ -33,7 +33,7 @@
 </head>
 <body>
 <h1>📊 @kansai_job_ パフォーマンスダッシュボード</h1>
-<p class="sub">最終更新: 2026/06/02 06:42 UTC（週次自動更新）</p>
+<p class="sub">最終更新: 2026/06/07 16:54 UTC（週次自動更新）</p>
 
 <!-- KPIカード -->
 <div class="grid">
@@ -44,11 +44,11 @@
   </div>
   <div class="card">
     <div class="label">総投稿数</div>
-    <div class="value">6</div>
+    <div class="value">0</div>
   </div>
   <div class="card">
     <div class="label">総いいね数</div>
-    <div class="value">8</div>
+    <div class="value">0</div>
   </div>
   <div class="card">
     <div class="label">総RT数</div>
@@ -79,39 +79,7 @@
     <thead>
       <tr><th>日付</th><th>タイプ</th><th>投稿内容</th><th>いいね</th><th>RT</th><th>返信</th></tr>
     </thead>
-    <tbody>
-        <tr>
-          <td>Tue, May 2</td>
-          <td><span class="badge">imported</span></td>
-          <td class="content">【28卒向け 関西穴場企業紹介 vol.18】 健康診断で血液検査を受けたことが...</td>
-          <td class="num">2</td>
-          <td class="num">0</td>
-          <td class="num">0</td>
-        </tr>
-        <tr>
-          <td>Tue, May 2</td>
-          <td><span class="badge">imported</span></td>
-          <td class="content">ガクチカが居酒屋バイトしかない関西28卒へ。 そのままだと、書類で落ちる。 人事...</td>
-          <td class="num">2</td>
-          <td class="num">0</td>
-          <td class="num">0</td>
-        </tr>
-        <tr>
-          <td>Tue, May 2</td>
-          <td><span class="badge">imported</span></td>
-          <td class="content">28卒のみなさんからよく聞く2つの悩み ①業界選びがわからない ②周りがどこまで...</td>
-          <td class="num">2</td>
-          <td class="num">0</td>
-          <td class="num">0</td>
-        </tr>
-        <tr>
-          <td>Tue, May 2</td>
-          <td><span class="badge">imported</span></td>
-          <td class="content">意外と知られてない数字。 大阪府本社の上場企業は437社。 京都・兵庫も合わせる...</td>
-          <td class="num">2</td>
-          <td class="num">0</td>
-          <td class="num">0</td>
-        </tr></tbody>
+    <tbody><tr><td colspan="6" style="text-align:center;color:#64748b">データ蓄積中...</td></tr></tbody>
   </table>
 </div>
 
@@ -126,9 +94,9 @@
 <p class="footer">GitHub Actions × Gemini API × Nitter で完全自動生成</p>
 
 <script>
-const typeLabels = ["ニュース速報型", "imported"];
-const typeLikes  = [0, 8];
-const typeRTs    = [0, 0];
+const typeLabels = [];
+const typeLikes  = [];
+const typeRTs    = [];
 
 new Chart(document.getElementById('typeChart'), {
   type: 'bar',
