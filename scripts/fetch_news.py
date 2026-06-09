@@ -29,62 +29,49 @@ KANSAI_KEYWORDS = ["関西", "大阪", "京都", "神戸", "兵庫", "滋賀", "
 
 # RSSフィード一覧（無料・安定して使えるもの）
 RSS_FEEDS = [
-    # 政府・公式機関（信頼度A確定）
+    # Google News（安定して動作・最多件数）
     {
-        "name": "厚生労働省 報道発表",
-        "url": "https://www.mhlw.go.jp/rss/topics.rss",
-        "category": "official",
-        "trust_base": "A",
-    },
-    {
-        "name": "文部科学省 報道発表",
-        "url": "https://www.mext.go.jp/rss/main.xml",
-        "category": "official",
-        "trust_base": "A",
-    },
-    # ニュースメディア（信頼度B）
-    {
-        "name": "NHKニュース 社会",
-        "url": "https://www.nhk.or.jp/rss/news/cat1.xml",
-        "category": "news",
-        "trust_base": "B",
-    },
-    {
-        "name": "NHKニュース 経済",
-        "url": "https://www.nhk.or.jp/rss/news/cat3.xml",
-        "category": "news",
-        "trust_base": "B",
-    },
-    {
-        "name": "マイナビニュース",
-        "url": "https://news.mynavi.jp/rss/top.xml",
-        "category": "media",
-        "trust_base": "B",
-    },
-    # Google Newsで就活キーワード検索（最も網羅的）
-    {
-        "name": "Google News: 就活・採用",
+        "name": "Google News: 就活・採用・新卒",
         "url": "https://news.google.com/rss/search?q=%E5%B0%B1%E6%B4%BB+%E6%8E%A1%E7%94%A8+%E6%96%B0%E5%8D%92&hl=ja&gl=JP&ceid=JP:ja",
         "category": "aggregator",
         "trust_base": "B",
     },
     {
-        "name": "Google News: インターンシップ",
-        "url": "https://news.google.com/rss/search?q=%E3%82%A4%E3%83%B3%E3%82%BF%E3%83%BC%E3%83%B3%E3%82%B7%E3%83%83%E3%83%97+%E5%A4%A7%E5%AD%A6%E7%94%9F&hl=ja&gl=JP&ceid=JP:ja",
+        "name": "Google News: インターンシップ 就活",
+        "url": "https://news.google.com/rss/search?q=%E3%82%A4%E3%83%B3%E3%82%BF%E3%83%BC%E3%83%B3%E3%82%B7%E3%83%83%E3%83%97+%E5%B0%B1%E6%B4%BB&hl=ja&gl=JP&ceid=JP:ja",
         "category": "aggregator",
         "trust_base": "B",
     },
     {
-        "name": "Google News: 関西 就職",
-        "url": "https://news.google.com/rss/search?q=%E9%96%A2%E8%A5%BF+%E5%B0%B1%E8%81%B7+%E6%8E%A1%E7%94%A8&hl=ja&gl=JP&ceid=JP:ja",
+        "name": "Google News: 関西 大阪 採用 就職",
+        "url": "https://news.google.com/rss/search?q=%E9%96%A2%E8%A5%BF+%E5%A4%A7%E9%98%AA+%E6%8E%A1%E7%94%A8+%E5%B0%B1%E8%81%B7&hl=ja&gl=JP&ceid=JP:ja",
         "category": "aggregator",
         "trust_base": "B",
     },
     {
-        "name": "Google News: 28卒 29卒",
-        "url": "https://news.google.com/rss/search?q=28%E5%8D%92+29%E5%8D%92+30%E5%8D%92&hl=ja&gl=JP&ceid=JP:ja",
+        "name": "Google News: 28卒 29卒 30卒",
+        "url": "https://news.google.com/rss/search?q=28%E5%8D%92+OR+29%E5%8D%92+OR+30%E5%8D%92+%E5%B0%B1%E6%B4%BB&hl=ja&gl=JP&ceid=JP:ja",
         "category": "aggregator",
         "trust_base": "B",
+    },
+    {
+        "name": "Google News: 内定 選考 大学生",
+        "url": "https://news.google.com/rss/search?q=%E5%86%85%E5%AE%9A+%E9%81%B8%E8%80%83+%E5%A4%A7%E5%AD%A6%E7%94%9F+%E5%B0%B1%E8%81%B7&hl=ja&gl=JP&ceid=JP:ja",
+        "category": "aggregator",
+        "trust_base": "B",
+    },
+    {
+        "name": "Google News: 夏インターン 2026",
+        "url": "https://news.google.com/rss/search?q=%E5%A4%8F%E3%82%A4%E3%83%B3%E3%82%BF%E3%83%BC%E3%83%B3+2026&hl=ja&gl=JP&ceid=JP:ja",
+        "category": "aggregator",
+        "trust_base": "B",
+    },
+    # NHK（取得できた場合のみ）
+    {
+        "name": "NHKニュース 経済",
+        "url": "https://www.nhk.or.jp/rss/news/cat3.xml",
+        "category": "news",
+        "trust_base": "A",
     },
 ]
 

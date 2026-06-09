@@ -65,8 +65,12 @@ def main(mode: str = "daily"):
             notify_discord("❌ ニュース収集に失敗しました。")
             return
 
-        # ③ 競合分析・トーン分析（失敗しても続行）
-        results["competitor"] = run_step("リサーチャー②", "analyze_competitors.py")
+        # ③ 競合分析・トーン分析（48時間以内に実行済みならスキップ）
+        if _should_run_competitor_analysis():
+            results["competitor"] = run_step("リサーチャー②", "analyze_competitors.py")
+        else:
+            print("\n[リサーチャー②] 48時間以内に実行済みのためスキップ")
+            results["competitor"] = True
 
         # ④ ファクトチェック
         results["verify"] = run_step("ファクトチェッカー", "verify_news.py")
@@ -105,6 +109,25 @@ def main(mode: str = "daily"):
     summary = f"✅ パイプライン完了 ({ok_count}/{total}ステップ成功, {elapsed}秒)"
     print(f"\n{summary}")
     notify_discord(summary)
+
+
+def _should_run_competitor_analysis() -> bool:
+    """tone_guide.jsonが48時間以内に生成されていたらスキップ"""
+    tone_path = DATA_DIR / "tone_guide.json"
+    if not tone_path.exists():
+        return True
+    try:
+        with open(tone_path, encoding="utf-8") as f:
+            data = json.load(f)
+        generated = data.get("generated_at", "")
+        if not generated:
+            return True
+        from datetime import timezone as _tz
+        dt = datetime.strptime(generated, "%Y-%m-%d %H:%M UTC").replace(tzinfo=timezone.utc)
+        hours_elapsed = (datetime.now(timezone.utc) - dt).total_seconds() / 3600
+        return hours_elapsed >= 48
+    except Exception:
+        return True
 
 
 def _notify_weekly_report():

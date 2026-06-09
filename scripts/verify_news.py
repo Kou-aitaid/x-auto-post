@@ -1,8 +1,8 @@
 """
 ファクトチェックスクリプト
-① 信頼できる出典は即確定（API不要）
-② それ以外はURLにアクセスして本文を取得 → Geminiでバッチ判定
-   → リアルタイム確認しつつ処理を高速に保つ
+出典名・タイトルキーワードでルールベース判定する。
+URL取得はGitHub ActionsのIPでブロックされるため使わない。
+Gemini APIはレート制限節約のため最小限の件数のみ使用。
 """
 
 from __future__ import annotations
@@ -16,12 +16,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
-
-try:
-    from bs4 import BeautifulSoup
-    BS4_AVAILABLE = True
-except ImportError:
-    BS4_AVAILABLE = False
 
 load_dotenv()
 
@@ -38,24 +32,27 @@ TRUSTED_A = [
     "NHK", "日本経済新聞",
 ]
 
-# 即B確定（信頼できるメディア・URL確認不要）
+# 即B確定（信頼できるメディア）
 TRUSTED_B = [
     "マイナビ", "リクナビ", "リクルート", "ダイヤモンド", "東洋経済",
     "朝日新聞", "毎日新聞", "読売新聞", "産経新聞", "共同通信",
     "doda", "エン転職", "キャリタス", "就職四季報", "日経HR",
-    "プレスリリース", "PR TIMES", "Business Wire",
+    "プレスリリース", "PR TIMES", "Google News",
 ]
 
-BATCH_SIZE     = 10   # Geminiに一度に送る件数
-BATCH_INTERVAL = 5    # バッチ間の待機秒数
-URL_TIMEOUT    = 8    # URL取得のタイムアウト秒数
+# タイトルにこれが含まれていたらCに落とす
+SPAM_KEYWORDS = [
+    "競馬", "パチンコ", "FX", "仮想通貨", "副業詐欺",
+    "出会い", "アダルト", "18禁",
+]
+
+# Geminiで確認する件数（レート制限節約）
+MAX_AI_CHECK = 5
+BATCH_SIZE   = 5
+BATCH_WAIT   = 5
 
 
-# ─────────────────────────────────────────
-# Gemini 呼び出し
-# ─────────────────────────────────────────
-
-def call_gemini(prompt: str, retries: int = 4) -> str:
+def call_gemini(prompt: str, retries: int = 3) -> str:
     key = os.environ["GEMINI_API_KEY"]
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     for attempt in range(retries):
@@ -70,95 +67,59 @@ def call_gemini(prompt: str, retries: int = 4) -> str:
     raise RuntimeError("Gemini APIのレート制限が続いています。")
 
 
-# ─────────────────────────────────────────
-# 即判定
-# ─────────────────────────────────────────
-
 def quick_score(item: Dict) -> Optional[str]:
+    """出典名とタイトルキーワードでスコアを即判定"""
     source = item.get("source", "")
+    title  = item.get("title", "")
+
+    # スパム・無関係キーワードはC
+    if any(kw in title for kw in SPAM_KEYWORDS):
+        return "C"
+
+    # 一次情報源はA
     if any(s in source for s in TRUSTED_A) or item.get("trust_base") == "A":
         return "A"
+
+    # 信頼できるメディアはB
     if any(s in source for s in TRUSTED_B):
         return "B"
-    return None
+
+    return None  # 判断できないものはGeminiへ
 
 
-# ─────────────────────────────────────────
-# URLアクセスして本文を取得
-# ─────────────────────────────────────────
-
-def fetch_article_text(url: str) -> str:
-    """記事URLにアクセスして本文テキストを取得（失敗したら空文字）"""
-    if not url or not url.startswith("http"):
-        return ""
-    try:
-        resp = requests.get(
-            url,
-            timeout=URL_TIMEOUT,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; factcheck-bot)"},
-            allow_redirects=True,
-        )
-        if resp.status_code != 200:
-            return ""
-
-        if BS4_AVAILABLE:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            # script/style を除去
-            for tag in soup(["script", "style", "nav", "footer"]):
-                tag.decompose()
-            text = " ".join(p.get_text(strip=True) for p in soup.find_all("p"))
-        else:
-            # BeautifulSoupがない場合はHTMLタグを正規表現で除去
-            text = re.sub(r"<[^>]+>", " ", resp.text)
-
-        # 改行・余白を整理して先頭300文字を返す
-        text = re.sub(r"\s+", " ", text).strip()
-        return text[:300]
-
-    except Exception:
-        return ""
-
-
-# ─────────────────────────────────────────
-# URLテキスト付きでGeminiにバッチ判定
-# ─────────────────────────────────────────
-
-def batch_verify_with_content(items: List[Dict]) -> List[Dict]:
-    """URL本文込みでGeminiにバッチ判定させる"""
+def ai_batch_score(items: List[Dict]) -> List[Dict]:
+    """Geminiで就活関連性と信頼度をまとめて判定"""
     items_text = "\n".join([
-        f"[{i}] タイトル: {item['title'][:100]}\n"
-        f"    出典: {item['source']}\n"
-        f"    本文抜粋: {item.get('_article_text', '取得不可')[:150]}"
+        f"[{i}] {item['title'][:80]}（出典: {item['source']}）"
         for i, item in enumerate(items)
     ])
 
-    prompt = f"""以下の就活ニュース記事を確認し、信頼度スコアを付けてください。
-本文抜粋が取得できている場合は、タイトルと本文の内容が一致しているかも確認してください。
+    prompt = f"""以下の記事タイトルと出典を見て、就活情報としての信頼度スコアを付けてください。
 
 スコア基準：
-A: 一次情報源（省庁・企業公式・NHK）または内容が確認できた信頼性の高い記事
-B: 信頼できるメディアの記事、または内容が妥当と判断できる記事
-C: 本文が取得できず内容不明 / タイトルと本文が乖離 / 古い情報 / 信頼性不明
+A: 一次情報源（省庁・企業公式・NHK）
+B: 信頼できるメディア、または就活に有用な内容
+C: 就活と無関係・信頼性不明・古い情報・重複
 
-ニュース一覧：
+記事一覧：
 {items_text}
 
-JSON形式のみで返してください（コードブロックなし）：
-[{{"index": 0, "score": "A", "reason": "理由15字以内"}}, ...]"""
+JSONのみ返してください（コードブロックなし）：
+[{{"index": 0, "score": "B", "reason": "理由10字以内"}}, ...]"""
 
-    text = call_gemini(prompt).strip()
-    if "```" in text:
-        match = re.search(r"\[.*\]", text, re.DOTALL)
-        text = match.group(0) if match else text
-    return json.loads(text)
+    try:
+        text = call_gemini(prompt).strip()
+        if "```" in text:
+            match = re.search(r"\[.*\]", text, re.DOTALL)
+            text = match.group(0) if match else text
+        return json.loads(text)
+    except Exception as e:
+        print(f"  [WARN] AI判定失敗: {e} → スコアBで処理")
+        return [{"index": i, "score": "B", "reason": "判定失敗"} for i in range(len(items))]
 
-
-# ─────────────────────────────────────────
-# main
-# ─────────────────────────────────────────
 
 def main():
-    print("=== ファクトチェック開始（URL取得 + Gemini判定）===")
+    print("=== ファクトチェック開始（ルールベース + 最小Gemini）===")
 
     news_path = DATA_DIR / "news.json"
     if not news_path.exists():
@@ -171,9 +132,8 @@ def main():
     items = news_data.get("items", [])
     print(f"対象: {len(items)}件")
 
-    # ① 即判定
     auto_scored  = []
-    needs_verify = []
+    needs_ai     = []
 
     for item in items:
         score = quick_score(item)
@@ -181,80 +141,61 @@ def main():
             item.update({
                 "trust_score": score,
                 "trust_reason": "出典で即確定",
-                "verified": True,
-                "url_checked": False,
-                "use_for_post": True,
+                "verified": score in ("A", "B"),
+                "use_for_post": score != "C",
             })
             auto_scored.append(item)
         else:
-            needs_verify.append(item)
+            needs_ai.append(item)
 
-    a_count = sum(1 for x in auto_scored if x["trust_score"] == "A")
-    b_count = sum(1 for x in auto_scored if x["trust_score"] == "B")
-    print(f"  即確定 A:{a_count}件 / B:{b_count}件 / URL確認が必要:{len(needs_verify)}件")
+    a = sum(1 for x in auto_scored if x["trust_score"] == "A")
+    b = sum(1 for x in auto_scored if x["trust_score"] == "B")
+    c = sum(1 for x in auto_scored if x["trust_score"] == "C")
+    print(f"  即確定 A:{a} / B:{b} / C:{c} / AI確認:{len(needs_ai)}件")
 
-    # ② URLアクセスして本文を取得
-    if needs_verify:
-        print(f"  URLから本文を取得中...")
-        for item in needs_verify:
-            text = fetch_article_text(item.get("url", ""))
-            item["_article_text"] = text
-            if text:
-                print(f"    [OK] {item['title'][:30]}...")
-            else:
-                print(f"    [NG] {item['title'][:30]}... （取得失敗）")
+    # Gemini確認は上限まで（残りはBで自動処理）
+    ai_targets  = needs_ai[:MAX_AI_CHECK]
+    auto_b_rest = needs_ai[MAX_AI_CHECK:]
 
-    # ③ Geminiでバッチ判定
     ai_scored = []
-    for i in range(0, len(needs_verify), BATCH_SIZE):
-        batch = needs_verify[i:i + BATCH_SIZE]
-        print(f"  Gemini判定中... ({i+1}〜{min(i+BATCH_SIZE, len(needs_verify))}件目)")
-        try:
-            results = batch_verify_with_content(batch)
-            for r in results:
-                idx = r["index"]
-                if idx < len(batch):
-                    batch[idx].update({
-                        "trust_score":  r["score"],
-                        "trust_reason": r.get("reason", ""),
-                        "verified":     True,
-                        "url_checked":  bool(batch[idx].get("_article_text")),
-                        "use_for_post": r["score"] != "C",
-                    })
-            ai_scored.extend(batch)
-        except Exception as e:
-            print(f"  [ERROR] 判定失敗: {e} → スコアBで処理")
-            for item in batch:
-                item.update({
-                    "trust_score": "B", "trust_reason": "判定失敗",
-                    "verified": False, "url_checked": False, "use_for_post": True,
+    if ai_targets:
+        print(f"  Geminiで判定中（{len(ai_targets)}件）...")
+        results = ai_batch_score(ai_targets)
+        for r in results:
+            idx = r["index"]
+            if idx < len(ai_targets):
+                ai_targets[idx].update({
+                    "trust_score":  r["score"],
+                    "trust_reason": r.get("reason", ""),
+                    "verified":     True,
+                    "use_for_post": r["score"] != "C",
                 })
-            ai_scored.extend(batch)
+        ai_scored.extend(ai_targets)
 
-        if i + BATCH_SIZE < len(needs_verify):
-            time.sleep(BATCH_INTERVAL)
-
-    # _article_text（内部用）を除去
-    for item in ai_scored:
-        item.pop("_article_text", None)
+    for item in auto_b_rest:
+        item.update({
+            "trust_score": "B",
+            "trust_reason": "自動B（件数上限）",
+            "verified": False,
+            "use_for_post": True,
+        })
+        ai_scored.append(item)
 
     all_verified = auto_scored + ai_scored
 
-    # A→B→C でソート、Cは除外
     usable = [x for x in all_verified if x.get("use_for_post")]
     usable.sort(key=lambda x: (
         {"A": 0, "B": 1, "C": 2}.get(x.get("trust_score"), 2),
-        not x.get("is_kansai", False)
+        not x.get("is_kansai", False),
     ))
 
     output = {
-        "verified_at":  datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+        "verified_at":   datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         "total_checked": len(all_verified),
         "usable_count":  len(usable),
-        "score_a":  sum(1 for x in all_verified if x.get("trust_score") == "A"),
-        "score_b":  sum(1 for x in all_verified if x.get("trust_score") == "B"),
-        "score_c":  sum(1 for x in all_verified if x.get("trust_score") == "C"),
-        "url_checked": sum(1 for x in ai_scored if x.get("url_checked")),
+        "score_a": sum(1 for x in all_verified if x.get("trust_score") == "A"),
+        "score_b": sum(1 for x in all_verified if x.get("trust_score") == "B"),
+        "score_c": sum(1 for x in all_verified if x.get("trust_score") == "C"),
         "items": usable,
     }
 
@@ -263,7 +204,7 @@ def main():
         json.dump(output, f, ensure_ascii=False, indent=2)
 
     print(f"\n=== 完了 ===")
-    print(f"A:{output['score_a']} / B:{output['score_b']} / C:{output['score_c']} / URL確認:{output['url_checked']}件")
+    print(f"A:{output['score_a']} / B:{output['score_b']} / C:{output['score_c']}")
     print(f"投稿に使える件数: {output['usable_count']}件")
 
 
