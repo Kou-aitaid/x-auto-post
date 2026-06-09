@@ -65,12 +65,9 @@ def main(mode: str = "daily"):
             notify_discord("❌ ニュース収集に失敗しました。")
             return
 
-        # ③ 競合分析・トーン分析（48時間以内に実行済みならスキップ）
-        if _should_run_competitor_analysis():
-            results["competitor"] = run_step("リサーチャー②", "analyze_competitors.py")
-        else:
-            print("\n[リサーチャー②] 48時間以内に実行済みのためスキップ")
-            results["competitor"] = True
+        # ③ 競合分析・トーン分析は週次のみ実行（daily では完全スキップ）
+        print("\n[リサーチャー②] 競合分析は週次のみ実行 → スキップ")
+        results["competitor"] = True
 
         # ④ ファクトチェック
         results["verify"] = run_step("ファクトチェッカー", "verify_news.py")

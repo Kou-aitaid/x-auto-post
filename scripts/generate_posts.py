@@ -58,8 +58,8 @@ def load_json(path: Path, default=None):
 def build_prompt(news_items: List[Dict], tone: Dict, competitor: Dict, insights: Dict, archive_titles: List[str]) -> str:
     # ニュースをテキスト化（最大15件）
     news_text = "\n".join([
-        f"[{i+1}] [{item['trust_score']}] {item['title']}\n    出典: {item['source']} / 要約: {item['summary'][:100]}"
-        for i, item in enumerate(news_items[:15])
+        f"[{i+1}] [{item['trust_score']}] {item['title']}\n    出典: {item['source']} / 要約: {item['summary'][:80]}"
+        for i, item in enumerate(news_items[:10])  # 15→10件に削減（プロンプト軽量化）
     ])
 
     # トーンガイドのポイントを抽出
